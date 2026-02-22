@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2026-02-22-12:08:00" author="timur">
+
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM pg_type WHERE typname = 'document_status';
+            </sqlCheck>
+        </preConditions>
+
+        <sqlFile path="01-create-document_status.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            DROP TYPE IF EXISTS document_status;
+        </rollback>
+    </changeSet>
+
+    <changeSet id="2026-02-22-12:10:00" author="timur">
+
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM pg_type WHERE typname = 'document_action';
+            </sqlCheck>
+        </preConditions>
+
+
+        <sqlFile path="02-create-document_action.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            DROP TYPE IF EXISTS document_action;
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
