@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2026-02-22 12:12:00" author="timur">
+
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="documents"/>
+            </not>
+        </preConditions>
+
+        <sqlFile path="03-create-documents.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            DROP TABLE IF EXISTS documents;
+        </rollback>
+
+    </changeSet>
+
+    <changeSet id="2026-02-22 12:14:00" author="timur">
+
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="document_history"/>
+            </not>
+        </preConditions>
+
+        <sqlFile path="04-create-document_history.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            DROP TABLE IF EXISTS document_history;
+        </rollback>
+
+    </changeSet>
+
+    <changeSet id="2026-02-22 12:16:00" author="timur">
+
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="approval_registry"/>
+            </not>
+        </preConditions>
+
+        <sqlFile path="05-create-approval_registry.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            DROP TABLE IF EXISTS approval_registry;
+        </rollback>
+
+    </changeSet>
+
+</databaseChangeLog>

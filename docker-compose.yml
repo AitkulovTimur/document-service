@@ -1,0 +1,17 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: itq_postgres
+    environment:
+      POSTGRES_DB: itq_db
+      POSTGRES_USER: itq_user
+      POSTGRES_PASSWORD: itq_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
