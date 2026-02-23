@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="
+           http://www.liquibase.org/xml/ns/dbchangelog
+           http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.23.xsd">
+
+    <changeSet id="2026-02-23-16:00:00" author="timur">
+        <sqlFile path="08-alter-tables-tmstmp.sql"
+                 relativeToChangelogFile="true"/>
+
+        <rollback>
+            ALTER TABLE documents
+                ALTER COLUMN created_at TYPE TIMESTAMP,
+                ALTER COLUMN updated_at TYPE TIMESTAMP;
+
+            ALTER TABLE document_history
+                ALTER COLUMN created_at TYPE TIMESTAMP;
+
+            ALTER TABLE approval_registry
+                ALTER COLUMN approved_at TYPE TIMESTAMP;
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

@@ -8,4 +8,5 @@
     <include file="db/changelog/enums/changelog-enums.xml"/>
     <include file="db/changelog/tables/changelog-tables.xml"/>
     <include file="db/changelog/indexes/changelog-indexes.xml"/>
+    <include file="db/changelog/correction/changelog-08-alter-tables.xml"/>
 </databaseChangeLog>
