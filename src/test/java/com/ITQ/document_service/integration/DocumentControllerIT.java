@@ -19,10 +19,12 @@ class DocumentControllerIT extends BaseIntegrationTest {
 
     @Test
     void shouldCreateDocumentHappyPath() throws Exception {
+        String author = "Ivan Ivanov";
+        String title = "Supply contract";
 
         var request = new CreateDocumentRequest(
-                "Ivan Ivanov",
-                "Supply contract"
+                author,
+                title
         );
 
         String json = objectMapper.writeValueAsString(request);
@@ -31,8 +33,8 @@ class DocumentControllerIT extends BaseIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.author").value("Ivan Ivanov"))
-                .andExpect(jsonPath("$.title").value("Supply contract"))
+                .andExpect(jsonPath("$.author").value(author))
+                .andExpect(jsonPath("$.title").value(title))
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.number").exists())
