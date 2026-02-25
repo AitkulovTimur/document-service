@@ -1,6 +1,6 @@
 package com.ITQ.document_service.mapper;
 
-import com.ITQ.document_service.dto.CreateDocumentResponse;
+import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.DocumentHistoryResponse;
 import com.ITQ.document_service.dto.DocumentInfo;
 import com.ITQ.document_service.dto.DocumentResponse;
@@ -23,7 +23,7 @@ public interface DocumentMapper {
     DocumentResponse toResponse(Document document);
 
     @Mapping(target = "documentInfo", source = ".")
-    CreateDocumentResponse toCreateResponse(Document document);
+    DocumentNoHistoryResponse toCreateResponse(Document document);
 
     @Named("mapHistory")
     default List<DocumentHistoryResponse> mapHistory(List<DocumentHistory> history) {

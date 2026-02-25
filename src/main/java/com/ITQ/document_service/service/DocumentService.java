@@ -1,8 +1,11 @@
 package com.ITQ.document_service.service;
 
+import com.ITQ.document_service.dto.BatchDocumentRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
-import com.ITQ.document_service.dto.CreateDocumentResponse;
+import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.DocumentResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 /**
  * Service interface for managing document operations.
@@ -24,9 +27,9 @@ public interface DocumentService {
      * generated ID, number, author, status, title and timestamps.</p>
      *
      * @param request the document creation request containing author and title information
-     * @return a {@link CreateDocumentResponse} containing the created document details
+     * @return a {@link DocumentNoHistoryResponse} containing the created document details
      */
-    CreateDocumentResponse create(CreateDocumentRequest request);
+    DocumentNoHistoryResponse create(CreateDocumentRequest request);
 
     /**
      * Finds a document by its unique identifier.
@@ -45,4 +48,13 @@ public interface DocumentService {
      * @throws com.ITQ.document_service.exception.DocumentNotFoundException if document not found
      */
     DocumentResponse findByNumber(String number);
+
+    /**
+     * Retrieves documents by their IDs with pagination and sorting.
+     *
+     * @param request the batch document request containing IDs
+     * @param pageable pagination and sorting parameters
+     * @return a {@link Page} of DocumentResponse objects
+     */
+    Page<DocumentResponse> findByIdIn(BatchDocumentRequest request, Pageable pageable);
 }

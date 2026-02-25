@@ -1,7 +1,8 @@
 package com.ITQ.document_service.service.impl;
 
+import com.ITQ.document_service.dto.BatchDocumentRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
-import com.ITQ.document_service.dto.CreateDocumentResponse;
+import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.DocumentResponse;
 import com.ITQ.document_service.entity.Document;
 import com.ITQ.document_service.enums.DocumentStatus;
@@ -13,6 +14,8 @@ import com.ITQ.document_service.service.DocumentService;
 import com.aventrix.jnanoid.jnanoid.NanoIdUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +29,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     @Transactional
-    public CreateDocumentResponse create(CreateDocumentRequest request) {
+    public DocumentNoHistoryResponse create(CreateDocumentRequest request) {
         final String author = request.author();
         final String title = request.title();
 
@@ -73,4 +76,13 @@ public class DocumentServiceImpl implements DocumentService {
         return documentMapper.toResponse(document);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DocumentResponse> findByIdIn(BatchDocumentRequest request, Pageable pageable) {
+        log.info("{}Retrieving documents by IDs with pagination and sorting", OperationForLogType.GET_DOCUMENT);
+
+        Page<Document> documentPage = documentRepository.findByIdIn(request.ids(), pageable);
+
+        return documentPage.map(documentMapper::toResponse);
+    }
 }

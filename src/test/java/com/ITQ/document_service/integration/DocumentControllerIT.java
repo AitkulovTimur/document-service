@@ -1,12 +1,16 @@
 package com.ITQ.document_service.integration;
 
+import com.ITQ.document_service.dto.BatchDocumentRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
 import com.ITQ.document_service.enums.DocumentStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -17,6 +21,9 @@ class DocumentControllerIT extends BaseIntegrationTest {
 
     private static final String AUTHOR = "Ivan Ivanov";
     private static final String TITLE = "Ivan Ivanov";
+
+    @Value("${spring.data.web.pageable.default-page-size:30}")
+    private int defaultPageSize;
 
     @Autowired
     private MockMvc mockMvc;
@@ -166,5 +173,47 @@ class DocumentControllerIT extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"))
                 .andExpect(jsonPath("$.message")
                         .value("Document not found with number=" + nonExistentNumber));
+    }
+
+    @Test
+    void shouldReturnPaginatedDocuments_whenBatchRequest() throws Exception {
+        // given
+        Long doc1Id = createDocument("Doc 1", "Author 1");
+        Long doc2Id = createDocument("Doc 2", "Author 2");
+
+        var request = new BatchDocumentRequest(List.of(doc1Id, doc2Id));
+        String requestAsJson = objectMapper.writeValueAsString(request);
+
+        final int expectedCountOfElements = 2;
+
+        // when
+        var result = mockMvc.perform(post("/api/documents/batch")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestAsJson));
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").isArray())
+                .andExpect(jsonPath("$.content.length()").value(expectedCountOfElements))
+                .andExpect(jsonPath("$.totalElements").value(expectedCountOfElements))
+                .andExpect(jsonPath("$.size").value(defaultPageSize));
+    }
+
+    private Long createDocument(String title, String author) throws Exception {
+        var request = new CreateDocumentRequest(author, title);
+        String requestAsJson = objectMapper.writeValueAsString(request);
+
+        String createDocResponse = mockMvc.perform(post("/api/documents")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestAsJson))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        return objectMapper.readTree(createDocResponse)
+                .path("documentInfo")
+                .path("id")
+                .asLong();
     }
 }
