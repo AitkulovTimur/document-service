@@ -1,62 +1,29 @@
 package com.ITQ.document_service.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.time.OffsetDateTime;
+
+import java.util.List;
 
 /**
- * DTO for document response.
+ * DTO for complete document response.
+ * Contains document information along with its full history.
+ * Used when retrieving a document with all historical changes.
  *
- * @param id       — document identifier
- * @param number   — document number
- * @param author   — document author
- * @param title    — document title
- * @param status   — document status
- * @param createdAt — document creation date
- * @param updatedAt — document last update date
+ * @param documentInfo — core document information including id, number, author, title, status, and timestamps
+ * @param history      — list of document history entries showing all changes and actions performed
  */
 @Schema(description = "Document response DTO")
 public record DocumentResponse(
         @Schema(
-                description = "Document identifier",
-                example = "1"
+                description = "Core document information",
+                implementation = DocumentInfo.class
         )
-        Long id,
+        DocumentInfo documentInfo,
 
         @Schema(
-                description = "Document number",
-                example = "DOC—hx_Pa14_e"
+                description = "Document history",
+                example = "[]"
         )
-        String number,
-
-        @Schema(
-                description = "Document author",
-                example = "Иван Иванов"
-        )
-        String author,
-
-        @Schema(
-                description = "Document title",
-                example = "Договор поставки"
-        )
-        String title,
-
-        @Schema(
-                description = "Document status",
-                example = "DRAFT",
-                allowableValues = {"DRAFT"}
-        )
-        String status,
-
-        @Schema(
-                description = "Document creation date",
-                example = "2024-02-24T10:30:00Z"
-        )
-        OffsetDateTime createdAt,
-
-        @Schema(
-                description = "Document last update date",
-                example = "2024-02-24T11:45:00Z"
-        )
-        OffsetDateTime updatedAt
+        List<DocumentHistoryResponse> history
 ) {
 }

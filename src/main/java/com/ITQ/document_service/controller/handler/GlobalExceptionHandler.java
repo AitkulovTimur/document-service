@@ -3,6 +3,7 @@ package com.ITQ.document_service.controller.handler;
 import com.ITQ.document_service.dto.api.ErrorResponse;
 import com.ITQ.document_service.dto.api.ErrorResponseValidation;
 import com.ITQ.document_service.enums.OperationForLogType;
+import com.ITQ.document_service.exception.DocumentNotFoundException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -53,6 +54,26 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
+                .body(body);
+    }
+
+    /**
+     * Handles DocumentNotFoundException when a document is not found.
+     *
+     * @param ex the DocumentNotFoundException containing error details
+     * @return ResponseEntity with error details and HTTP 404 status
+     */
+    @ExceptionHandler(DocumentNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleDocumentNotFound(DocumentNotFoundException ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.NOT_FOUND.name(),
+                ex.getMessage()
+        );
+
+        log.error("{}{}", OperationForLogType.GET_DOCUMENT.getOperation(), ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
                 .body(body);
     }
 
