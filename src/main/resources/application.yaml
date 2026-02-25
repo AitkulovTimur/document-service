@@ -15,6 +15,13 @@ spring:
         format_sql: true
         highlight_sql: true
     database-platform: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    web:
+      pageable:
+        default-page-size: 30
+        page-parameter: page
+        size-parameter: size
+        max-page-size: 100
 
   liquibase:
     enabled: true
