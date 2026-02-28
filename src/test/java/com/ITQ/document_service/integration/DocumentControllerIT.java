@@ -1,7 +1,9 @@
 package com.ITQ.document_service.integration;
 
 import com.ITQ.document_service.dto.BatchDocumentRequest;
+import com.ITQ.document_service.dto.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
+import com.ITQ.document_service.dto.SubmissionRequest;
 import com.ITQ.document_service.enums.DocumentStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -11,6 +13,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -197,6 +200,36 @@ class DocumentControllerIT extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.content.length()").value(expectedCountOfElements))
                 .andExpect(jsonPath("$.totalElements").value(expectedCountOfElements))
                 .andExpect(jsonPath("$.size").value(defaultPageSize));
+    }
+
+    @Test
+    void shouldSubmitDocumentsHappyPath() throws Exception {
+        // given
+        Long doc1Id = createDocument("Doc 1", "Author 1");
+        Long doc2Id = createDocument("Doc 2", "Author 2");
+        Long nonExistentId = 1000000000L;
+
+        var submissionRequests = Set.of(
+                new SubmissionRequest(doc1Id, "Submit for review"),
+                new SubmissionRequest(doc2Id, "Please approve"),
+                new SubmissionRequest(nonExistentId, "Not found")
+        );
+
+        var request = new BatchSubmissionRequest(submissionRequests, "admin");
+        String requestAsJson = objectMapper.writeValueAsString(request);
+
+        // when
+        var result = mockMvc.perform(post("/api/documents/batch/submission")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestAsJson));
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.results").isArray())
+                .andExpect(jsonPath("$.results.length()").value(3))
+                .andExpect(jsonPath("$.results[?(@.documentId==" + doc1Id + " && @.status=='SUCCESS')]").exists())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + doc2Id + " && @.status=='SUCCESS')]").exists())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + nonExistentId + " && @.status=='NOT_FOUND')]").exists());
     }
 
     private Long createDocument(String title, String author) throws Exception {

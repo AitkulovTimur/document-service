@@ -1,9 +1,11 @@
 package com.ITQ.document_service.service;
 
 import com.ITQ.document_service.dto.BatchDocumentRequest;
+import com.ITQ.document_service.dto.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
 import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.DocumentResponse;
+import com.ITQ.document_service.dto.SubmissionResult;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -57,4 +59,16 @@ public interface DocumentService {
      * @return a {@link Page} of DocumentResponse objects
      */
     Page<DocumentResponse> findByIdIn(BatchDocumentRequest request, Pageable pageable);
+
+    /**
+     * Submits documents for approval in batch.
+     *
+     * <p>This method attempts to transition each document from DRAFT to SUBMITTED status.
+     * Processing is atomic for each document, and partial successes are allowed.
+     * Results are returned for each document ID indicating success, conflict, or not found.</p>
+     *
+     * @param request the batch submission request containing document IDs
+     * @return a {@link SubmissionResult} containing results for each document
+     */
+    SubmissionResult submitDocuments(BatchSubmissionRequest request);
 }
