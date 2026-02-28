@@ -11,6 +11,8 @@
         </encoder>
     </appender>
 
+    <logger name="com.ITQ.document_service.service.internal" level="DEBUG" />
+
     <root level="INFO">
         <appender-ref ref="CONSOLE" />
     </root>

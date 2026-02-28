@@ -1,9 +1,11 @@
 package com.ITQ.document_service.controller;
 
 import com.ITQ.document_service.dto.BatchDocumentRequest;
+import com.ITQ.document_service.dto.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.CreateDocumentRequest;
 import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.DocumentResponse;
+import com.ITQ.document_service.dto.SubmissionResult;
 import com.ITQ.document_service.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -85,6 +87,19 @@ public class DocumentController {
             Pageable pageable
     ) {
         return documentService.findByIdIn(request, pageable);
+    }
+
+
+    @Operation(summary = "Submit documents for approval (batch)",
+            description = "Attempts to transition documents from DRAFT to SUBMITTED status. Returns results for each document ID.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Batch submission completed",
+                    content = @Content(schema = @Schema(implementation = SubmissionResult.class))),
+            @ApiResponse(responseCode = "400", description = "Validation error")
+    })
+    @PostMapping("/batch/submission")
+    public SubmissionResult submitDocuments(@Valid @RequestBody BatchSubmissionRequest request) {
+        return documentService.submitDocuments(request);
     }
 
 }

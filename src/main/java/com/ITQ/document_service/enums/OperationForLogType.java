@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum OperationForLogType {
     CREATE_DOCUMENT("[CREATE_DOCUMENT] "),
+    SUBMIT_DOCUMENT("[SUBMIT_DOCUMENT] "),
     GET_DOCUMENT("[GET_DOCUMENT] ");
 
     private final String operation;
