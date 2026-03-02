@@ -1,11 +1,14 @@
 package com.ITQ.document_service.service;
 
-import com.ITQ.document_service.dto.BatchDocumentRequest;
-import com.ITQ.document_service.dto.BatchSubmissionRequest;
-import com.ITQ.document_service.dto.CreateDocumentRequest;
-import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
-import com.ITQ.document_service.dto.DocumentResponse;
-import com.ITQ.document_service.dto.SubmissionResult;
+
+import com.ITQ.document_service.dto.request.BatchApprovalRequest;
+import com.ITQ.document_service.dto.request.BatchDocumentRequest;
+import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
+import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.response.ApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
+import com.ITQ.document_service.dto.response.DocumentResponse;
+import com.ITQ.document_service.dto.response.SubmissionResult;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -54,7 +57,7 @@ public interface DocumentService {
     /**
      * Retrieves documents by their IDs with pagination and sorting.
      *
-     * @param request the batch document request containing IDs
+     * @param request  the batch document request containing IDs
      * @param pageable pagination and sorting parameters
      * @return a {@link Page} of DocumentResponse objects
      */
@@ -71,4 +74,18 @@ public interface DocumentService {
      * @return a {@link SubmissionResult} containing results for each document
      */
     SubmissionResult submitDocuments(BatchSubmissionRequest request);
+
+    /**
+     * Approves documents in batch.
+     *
+     * <p>This method attempts to transition each document from SUBMITTED to APPROVED status.
+     * For successful approvals, creates history entries and registry entries.
+     * Processing is atomic for each document, and partial successes are allowed.
+     * If registry entry creation fails, document approval is rolled back.
+     * Results are returned for each document ID indicating success, conflict, not found, or registry error.</p>
+     *
+     * @param request the batch approval request containing document IDs
+     * @return a {@link ApprovalResult} containing results for each document
+     */
+    ApprovalResult approveDocuments(BatchApprovalRequest request);
 }
