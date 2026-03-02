@@ -1,9 +1,10 @@
 package com.ITQ.document_service.mapper;
 
-import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
-import com.ITQ.document_service.dto.DocumentHistoryResponse;
-import com.ITQ.document_service.dto.DocumentInfo;
-import com.ITQ.document_service.dto.DocumentResponse;
+
+import com.ITQ.document_service.dto.response.DocumentHistoryResponse;
+import com.ITQ.document_service.dto.response.DocumentInfo;
+import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
+import com.ITQ.document_service.dto.response.DocumentResponse;
 import com.ITQ.document_service.entity.Document;
 import com.ITQ.document_service.entity.DocumentHistory;
 import org.mapstruct.Mapper;

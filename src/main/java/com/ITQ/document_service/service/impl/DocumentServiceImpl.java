@@ -1,14 +1,20 @@
 package com.ITQ.document_service.service.impl;
 
-import com.ITQ.document_service.dto.BatchDocumentRequest;
-import com.ITQ.document_service.dto.BatchSubmissionRequest;
-import com.ITQ.document_service.dto.CreateDocumentRequest;
-import com.ITQ.document_service.dto.DocumentNoHistoryResponse;
-import com.ITQ.document_service.dto.DocumentResponse;
-import com.ITQ.document_service.dto.DocumentSubmissionResult;
-import com.ITQ.document_service.dto.SubmissionRequest;
-import com.ITQ.document_service.dto.SubmissionResult;
+
+import com.ITQ.document_service.dto.request.BatchApprovalRequest;
+import com.ITQ.document_service.dto.request.BatchDocumentRequest;
+import com.ITQ.document_service.dto.request.BatchRequest;
+import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
+import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.request.HasId;
+import com.ITQ.document_service.dto.response.ApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
+import com.ITQ.document_service.dto.response.DocumentResponse;
+import com.ITQ.document_service.dto.response.DocumentSubmissionResult;
+import com.ITQ.document_service.dto.response.SubmissionResult;
 import com.ITQ.document_service.entity.Document;
+import com.ITQ.document_service.enums.DocumentAction;
 import com.ITQ.document_service.enums.DocumentStatus;
 import com.ITQ.document_service.enums.OperationForLogType;
 import com.ITQ.document_service.exception.DocumentNotFoundException;
@@ -26,8 +32,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -39,6 +47,7 @@ public class DocumentServiceImpl implements DocumentService {
 
     private final DocumentRepository documentRepository;
     private final DocumentProcessor documentProcessor;
+    private final Executor documentExecutor;
     private final DocumentMapper documentMapper;
 
     @Override
@@ -106,37 +115,63 @@ public class DocumentServiceImpl implements DocumentService {
 
     @Override
     public SubmissionResult submitDocuments(BatchSubmissionRequest request) {
+        List<DocumentSubmissionResult> results = executeBatch(
+                documentProcessor::submitSingleDocument,
+                request,
+                OperationForLogType.SUBMIT_DOCUMENT,
+                DocumentAction.SUBMIT.name().toLowerCase()
+        );
+        return new SubmissionResult(results);
+    }
 
-        Map<Long, SubmissionRequest> uniqueRequests = request.idsWithComments()
-                .stream()
+    @Override
+    public ApprovalResult approveDocuments(BatchApprovalRequest request) {
+        List<DocumentApprovalResult> results = executeBatch(
+                documentProcessor::approveSingleDocument,
+                request,
+                OperationForLogType.APPROVE_DOCUMENT,
+                DocumentAction.APPROVE.name().toLowerCase()
+        );
+        return new ApprovalResult(results);
+    }
+
+    private <REQ extends HasId, RES> List<RES> executeBatch(
+            BiFunction<REQ, String, RES> processor,
+            BatchRequest<REQ> batchRequest,
+            OperationForLogType logType,
+            String actionName
+    ) {
+        Map<Long, REQ> uniqueRequests = batchRequest.idsWithComments().stream()
                 .collect(Collectors.toMap(
-                        SubmissionRequest::id,
+                        HasId::id,
                         r -> r,
                         (existing, duplicate) -> existing
                 ));
 
         int size = uniqueRequests.size();
+        log.info("{}{} {} documents with ids: {}",
+                logType.getOperation(), actionName, size, uniqueRequests.keySet());
 
-        log.info("{}Submitting {} documents for approval: {}",
-                OperationForLogType.SUBMIT_DOCUMENT.getOperation(),
-                size,
-                uniqueRequests.keySet()
-        );
+        List<RES> results;
 
-        Stream<SubmissionRequest> stream =
-                size > PARALLEL_THRESHOLD
-                        ? uniqueRequests.values().parallelStream()
-                        : uniqueRequests.values().stream();
+        if (size > PARALLEL_THRESHOLD) {
+            List<CompletableFuture<RES>> futures = uniqueRequests.values().stream()
+                    .map(req -> CompletableFuture.supplyAsync(
+                            () -> processor.apply(req, batchRequest.actor()),
+                            documentExecutor
+                    ))
+                    .toList();
 
-        List<DocumentSubmissionResult> results = stream
-                .map(req -> documentProcessor.submitSingleDocument(req, request.actor()))
-                .toList();
+            results = futures.stream().map(CompletableFuture::join).toList();
+        } else {
+            results = uniqueRequests.values().stream()
+                    .map(req -> processor.apply(req, batchRequest.actor()))
+                    .toList();
+        }
 
-        log.info("{}Batch submission completed. Processed {} documents",
-                OperationForLogType.SUBMIT_DOCUMENT.getOperation(),
-                results.size()
-        );
+        log.info("{}Batch {} completed. Processed {} documents",
+                logType.getOperation(), actionName.toLowerCase(), results.size());
 
-        return new SubmissionResult(results);
+        return results;
     }
 }

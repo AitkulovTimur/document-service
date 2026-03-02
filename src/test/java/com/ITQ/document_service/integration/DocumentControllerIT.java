@@ -1,20 +1,31 @@
 package com.ITQ.document_service.integration;
 
-import com.ITQ.document_service.dto.BatchDocumentRequest;
-import com.ITQ.document_service.dto.BatchSubmissionRequest;
-import com.ITQ.document_service.dto.CreateDocumentRequest;
-import com.ITQ.document_service.dto.SubmissionRequest;
+
+import com.ITQ.document_service.dto.request.ApprovalRequest;
+import com.ITQ.document_service.dto.request.BatchApprovalRequest;
+import com.ITQ.document_service.dto.request.BatchDocumentRequest;
+import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
+import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.request.SubmissionRequest;
+import com.ITQ.document_service.dto.response.DocumentInfo;
 import com.ITQ.document_service.enums.DocumentStatus;
+import com.ITQ.document_service.repository.ApprovalRegistryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -33,6 +44,14 @@ class DocumentControllerIT extends BaseIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockitoSpyBean
+    private ApprovalRegistryRepository approvalRegistryRepository;
+
+    @AfterEach
+    void tearDown() {
+        Mockito.reset(approvalRegistryRepository);
+    }
 
     @Test
     void shouldCreateDocumentHappyPath() throws Exception {
@@ -205,8 +224,8 @@ class DocumentControllerIT extends BaseIntegrationTest {
     @Test
     void shouldSubmitDocumentsHappyPath() throws Exception {
         // given
-        Long doc1Id = createDocument("Doc 1", "Author 1");
-        Long doc2Id = createDocument("Doc 2", "Author 2");
+        Long doc1Id = createDocument("Doc 1", AUTHOR);
+        Long doc2Id = createDocument("Doc 2", AUTHOR);
         Long nonExistentId = 1000000000L;
 
         var submissionRequests = Set.of(
@@ -232,6 +251,83 @@ class DocumentControllerIT extends BaseIntegrationTest {
                 .andExpect(jsonPath("$.results[?(@.documentId==" + nonExistentId + " && @.status=='NOT_FOUND')]").exists());
     }
 
+    @Test
+    void shouldApproveDocumentsHappyPath() throws Exception {
+        // given
+        Long doc1Id = createDocument("Doc 1", AUTHOR);
+        Long doc2Id = createDocument("Doc 2", AUTHOR);
+        Long doc3Id = createDocument("Doc 3", AUTHOR);
+
+        submitDocument(doc1Id);
+        submitDocument(doc2Id);
+
+        Long nonExistentId = 1000000000L;
+
+        var approvalRequests = Set.of(
+                new ApprovalRequest(doc1Id, "Submit for review"),
+                new ApprovalRequest(doc2Id, "Please approve"),
+                new ApprovalRequest(doc3Id, "Please approve"),
+                new ApprovalRequest(nonExistentId, "Not found")
+        );
+        var batchRequest = new BatchApprovalRequest(approvalRequests, "admin");
+        String requestAsJson = objectMapper.writeValueAsString(batchRequest);
+
+        // when
+        var result = mockMvc.perform(post("/api/documents/batch/approval")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestAsJson));
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.results").isArray())
+                .andExpect(jsonPath("$.results.length()").value(4))
+                .andExpect(jsonPath("$.results[?(@.documentId==" + doc1Id + " && @.status=='SUCCESS')]")
+                        .exists())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + doc2Id + " && @.status=='SUCCESS')]")
+                        .exists())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + doc3Id + " && @.status=='CONFLICT')]")
+                        .exists())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + nonExistentId + " && @.status=='NOT_FOUND')]")
+                        .exists());
+    }
+
+    @Test
+    void shouldApproveDocumentsErrorPath() throws Exception {
+        // given
+        Long documentId = createDocument("Doc 1", AUTHOR);
+
+        submitDocument(documentId);
+
+        var approvalRequests = Set.of(
+                new ApprovalRequest(documentId, "Submit for review")
+        );
+        var batchRequest = new BatchApprovalRequest(approvalRequests, "admin");
+        String requestAsJson = objectMapper.writeValueAsString(batchRequest);
+
+        // when
+        doThrow(RuntimeException.class).when(approvalRegistryRepository).save(any());
+        var result = mockMvc.perform(post("/api/documents/batch/approval")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(requestAsJson));
+
+        // then
+        result.andExpect(status().isOk())
+                .andExpect(jsonPath("$.results").isArray())
+                .andExpect(jsonPath("$.results.length()").value(1))
+                .andExpect(jsonPath("$.results[?(@.documentId==" + documentId + " && @.status=='REGISTRY_ERROR')]")
+                        .exists());
+
+        var docToCheck = mockMvc.perform(get("/api/documents/{id}", documentId))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        var rootNode = objectMapper.readTree(docToCheck);
+
+        DocumentInfo document = objectMapper.treeToValue(rootNode.path("documentInfo"), DocumentInfo.class);
+        assertEquals(DocumentStatus.SUBMITTED.name(), document.status());
+    }
+
     private Long createDocument(String title, String author) throws Exception {
         var request = new CreateDocumentRequest(author, title);
         String requestAsJson = objectMapper.writeValueAsString(request);
@@ -248,5 +344,17 @@ class DocumentControllerIT extends BaseIntegrationTest {
                 .path("documentInfo")
                 .path("id")
                 .asLong();
+    }
+
+    private void submitDocument(Long documentId) throws Exception {
+        var submissionRequest = new SubmissionRequest(documentId, "Submit for approval");
+        var batchRequest = new BatchSubmissionRequest(Set.of(submissionRequest), "admin");
+        String requestAsJson = objectMapper.writeValueAsString(batchRequest);
+
+        mockMvc.perform(post("/api/documents/batch/submission")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(requestAsJson))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results[?(@.documentId==" + documentId + " && @.status=='SUCCESS')]").exists());
     }
 }

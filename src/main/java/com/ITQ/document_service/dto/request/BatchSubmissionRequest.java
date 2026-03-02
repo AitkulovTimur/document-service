@@ -1,4 +1,4 @@
-package com.ITQ.document_service.dto;
+package com.ITQ.document_service.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -9,7 +9,7 @@ import java.util.Set;
 
 /**
  * DTO for batch document submission request.
- * Contains list of document IDs to submit for approval.
+ * Contains list of document IDs (with comments) to submit for approval.
  *
  * @param idsWithComments list of document IDs to submit (1-1000) with comments
  * @param actor           actor who submitted the documents
@@ -17,15 +17,14 @@ import java.util.Set;
 @Schema(description = "Batch document submission request")
 public record BatchSubmissionRequest(
         @Schema(
-                description = "List of document IDs to submit for approval",
-                example = "[1, 2, 3, 4, 5]"
+                description = "List of document IDs to submit for approval and comments"
         )
         @NotEmpty(message = "IDs list cannot be empty")
         @Size(max = 1000, message = "Cannot process more than 1000 documents at once")
         Set<SubmissionRequest> idsWithComments,
 
-        @Size(max = 255, message = "actor must be at most 255 characters")
+        @Size(max = 255, message = "Actor must be at most 255 characters")
         @NotBlank(message = "Actor must not be empty")
         String actor
-) {
+) implements BatchRequest <SubmissionRequest> {
 }

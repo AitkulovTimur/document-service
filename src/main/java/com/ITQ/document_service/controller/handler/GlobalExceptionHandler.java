@@ -77,6 +77,26 @@ public class GlobalExceptionHandler {
                 .body(body);
     }
 
+    /**
+     * Handles generic Exception that are not caught by specific handlers.
+     *
+     * @param ex the generic Exception containing error details
+     * @return ResponseEntity with error details and HTTP 500 status
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        ErrorResponse body = new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.name(),
+                "An unexpected error occurred"
+        );
+
+        log.error("Unexpected error: {}", ex.getMessage(), ex);
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(body);
+    }
+
     private void tryLogWithJsonStringOrUseException(String exceptionDescription, OperationForLogType operation,
                                                     Object objToJsonfy) {
         try {

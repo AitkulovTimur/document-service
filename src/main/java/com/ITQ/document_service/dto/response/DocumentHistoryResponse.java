@@ -1,4 +1,4 @@
-package com.ITQ.document_service.dto;
+package com.ITQ.document_service.dto.response;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 

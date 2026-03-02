@@ -1,0 +1,18 @@
+package com.ITQ.document_service.dto.request;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+@Schema(description = "Document approval request")
+public record ApprovalRequest(
+        @Schema(description = "Document ID to approve", example = "123")
+        @NotNull(message = "ID cannot be null")
+        @Min(value = 1, message = "ID must be positive")
+        Long id,
+        @Schema(description = "Optional approval comment", example = "Approved by compliance team")
+        @Size(max = 500, message = "Comment must be at most 500 characters")
+        String comment
+) implements HasId {
+}
