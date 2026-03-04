@@ -4,10 +4,12 @@ import com.ITQ.document_service.dto.api.ErrorResponse;
 import com.ITQ.document_service.dto.api.ErrorResponseValidation;
 import com.ITQ.document_service.enums.OperationForLogType;
 import com.ITQ.document_service.exception.DocumentNotFoundException;
+import com.ITQ.document_service.exception.DocumentServiceClientException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -51,6 +53,36 @@ public class GlobalExceptionHandler {
 
         tryLogWithJsonStringOrUseException("Validation failed. Details:",
                 OperationForLogType.CREATE_DOCUMENT, fieldErrors);
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(body);
+    }
+
+    /**
+     * General handler for custom client exceptions.
+     *
+     * @param ex the DocumentServiceClientException containing error message
+     * @return ResponseEntity with error details and HTTP 400 status
+     */
+    @ExceptionHandler(DocumentServiceClientException.class)
+    public ResponseEntity<ErrorResponse> handleValidation(DocumentServiceClientException ex) {
+
+        List<ErrorResponseValidation.FieldError> clientErrors = ex.getClientErrors();
+
+        ErrorResponse body;
+
+        if (CollectionUtils.isEmpty(clientErrors)) {
+            body = new ErrorResponse(
+                    HttpStatus.BAD_REQUEST.name(),
+                    ex.getMessage()
+            );
+        } else {
+            body = new ErrorResponseValidation(
+                    ex.getMessage(),
+                    clientErrors
+            );
+        }
 
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)

@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -134,7 +135,7 @@ class DocumentControllerIT extends BaseIntegrationTest {
     void shouldFailWhenDocumentNotFoundById() throws Exception {
 
         // given
-        Long nonExistentId = -1L;
+        final Long nonExistentId = -1L;
 
         // when
         var result = mockMvc.perform(get("/api/documents/{id}", nonExistentId));
@@ -185,7 +186,7 @@ class DocumentControllerIT extends BaseIntegrationTest {
     void shouldFailWhenDocumentNotFoundByNumber() throws Exception {
 
         // given
-        String nonExistentNumber = "DOC—NONEXISTENT123";
+        final String nonExistentNumber = "DOC—NONEXISTENT123";
 
         // when
         var result = mockMvc.perform(get("/api/documents/by-number/{number}", nonExistentNumber));
@@ -226,7 +227,7 @@ class DocumentControllerIT extends BaseIntegrationTest {
         // given
         Long doc1Id = createDocument("Doc 1", AUTHOR);
         Long doc2Id = createDocument("Doc 2", AUTHOR);
-        Long nonExistentId = 1000000000L;
+        final Long nonExistentId = 1000000000L;
 
         var submissionRequests = Set.of(
                 new SubmissionRequest(doc1Id, "Submit for review"),
@@ -261,7 +262,7 @@ class DocumentControllerIT extends BaseIntegrationTest {
         submitDocument(doc1Id);
         submitDocument(doc2Id);
 
-        Long nonExistentId = 1000000000L;
+        final Long nonExistentId = 1000000000L;
 
         var approvalRequests = Set.of(
                 new ApprovalRequest(doc1Id, "Submit for review"),
@@ -326,6 +327,39 @@ class DocumentControllerIT extends BaseIntegrationTest {
 
         DocumentInfo document = objectMapper.treeToValue(rootNode.path("documentInfo"), DocumentInfo.class);
         assertEquals(DocumentStatus.SUBMITTED.name(), document.status());
+    }
+
+    @Test
+    void shouldApproveDocumentConcurrently_andCreateSingleRegistryRecord() throws Exception {
+        // given
+        Long documentId = createDocument("Doc 1", AUTHOR);
+        submitDocument(documentId);
+
+        final int threads = 8;
+        final int attempts = 50;
+
+        // then
+        String response = mockMvc.perform(get("/api/concurrency/documents/{id}/approve", documentId)
+                        .param("threads", String.valueOf(threads))
+                        .param("attempts", String.valueOf(attempts))
+                        .param("actor", "admin"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documentId").value(documentId))
+                .andExpect(jsonPath("$.threads").value(threads))
+                .andExpect(jsonPath("$.attempts").value(attempts))
+                .andExpect(jsonPath("$.finalStatus").value(DocumentStatus.APPROVED.name()))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        var root = objectMapper.readTree(response);
+        assertNotNull(root.get("success"));
+        assertNotNull(root.get("registryError"));
+
+        // verify only one registry record exists for document
+        assertEquals(1, approvalRegistryRepository.findAll().stream()
+                .filter(r -> r.getDocument() != null && documentId.equals(r.getDocument().getId()))
+                .count());
     }
 
     private Long createDocument(String title, String author) throws Exception {

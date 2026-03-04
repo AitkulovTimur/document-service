@@ -16,12 +16,14 @@ import com.ITQ.document_service.repository.ApprovalRegistryRepository;
 import com.ITQ.document_service.repository.DocumentHistoryRepository;
 import com.ITQ.document_service.repository.DocumentRepository;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.interceptor.TransactionAspectSupport;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Internal service responsible for processing individual document operations.
@@ -58,12 +60,27 @@ import org.springframework.transaction.interceptor.TransactionAspectSupport;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DocumentProcessor {
 
     private final DocumentRepository documentRepository;
     private final DocumentHistoryRepository documentHistoryRepository;
     private final ApprovalRegistryRepository approvalRegistryRepository;
+
+    private final TransactionTemplate transactionTemplate;
+
+    public DocumentProcessor(
+            DocumentRepository documentRepository,
+            DocumentHistoryRepository documentHistoryRepository,
+            ApprovalRegistryRepository approvalRegistryRepository,
+            PlatformTransactionManager transactionManager
+    ) {
+        this.documentRepository = documentRepository;
+        this.documentHistoryRepository = documentHistoryRepository;
+        this.approvalRegistryRepository = approvalRegistryRepository;
+
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
 
     /**
      * Processes a single document submission request.
@@ -168,19 +185,20 @@ public class DocumentProcessor {
      * @see ApprovalRegistry
      * @see DocumentHistory
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public DocumentApprovalResult approveSingleDocument(@NonNull ApprovalRequest approvalRequest, @NonNull String approvedBy) {
-        Long documentId = approvalRequest.id();
-        log.debug("{}Processing document approval for ID: {}. Approved by: {}",
-                OperationForLogType.APPROVE_DOCUMENT.getOperation(), documentId, approvedBy);
+        return transactionTemplate.execute(status -> {
+            Long documentId = approvalRequest.id();
+            log.debug("{}Processing document approval for ID: {}. Approved by: {}",
+                    OperationForLogType.APPROVE_DOCUMENT.getOperation(), documentId, approvedBy);
 
-        return documentRepository.findById(documentId)
-                .map(document -> processSubmitted(document, approvalRequest.comment(), approvedBy))
-                .orElseGet(() -> {
-                    log.debug("{}Document with ID {} not found for approval",
-                            OperationForLogType.APPROVE_DOCUMENT.getOperation(), documentId);
-                    return new DocumentApprovalResult(documentId, ApprovalStatus.NOT_FOUND);
-                });
+            return documentRepository.findById(documentId)
+                    .map(document -> processSubmitted(document, approvalRequest.comment(), approvedBy, status))
+                    .orElseGet(() -> {
+                        log.debug("{}Document with ID {} not found for approval",
+                                OperationForLogType.APPROVE_DOCUMENT.getOperation(), documentId);
+                        return new DocumentApprovalResult(documentId, ApprovalStatus.NOT_FOUND);
+                    });
+        });
     }
 
     /**
@@ -195,7 +213,12 @@ public class DocumentProcessor {
      * @param approvedBy the user performing the approval
      * @return {@link DocumentApprovalResult} with SUCCESS, CONFLICT, or REGISTRY_ERROR status
      */
-    private DocumentApprovalResult processSubmitted(@NonNull Document document, String comment, String approvedBy) {
+    private DocumentApprovalResult processSubmitted(
+            @NonNull Document document,
+            String comment,
+            String approvedBy,
+            org.springframework.transaction.TransactionStatus transactionStatus
+    ) {
 
         if (document.getStatus() != DocumentStatus.SUBMITTED) {
             log.debug("{}Document with ID {} has status {}, cannot approve from SUBMITTED",
@@ -203,36 +226,43 @@ public class DocumentProcessor {
             return new DocumentApprovalResult(document.getId(), ApprovalStatus.CONFLICT);
         }
 
-        document.setStatus(DocumentStatus.APPROVED);
-
-        DocumentHistory history = DocumentHistory.builder()
-                .document(document)
-                .actor(approvedBy)
-                .comment(comment)
-                .action(DocumentAction.APPROVE)
-                .build();
-        documentHistoryRepository.save(history);
-
         try {
+            document.setStatus(DocumentStatus.APPROVED);
+
+            DocumentHistory history = DocumentHistory.builder()
+                    .document(document)
+                    .actor(approvedBy)
+                    .comment(comment)
+                    .action(DocumentAction.APPROVE)
+                    .build();
+            documentHistoryRepository.save(history);
+
+
             ApprovalRegistry registry = ApprovalRegistry.builder()
                     .document(document)
                     .approvedBy(approvedBy)
                     .approvedAt(java.time.OffsetDateTime.now())
                     .build();
             approvalRegistryRepository.save(registry);
+
+            documentRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("{} Concurrent modification detected for document ID: {}. Details: {}",
+                    OperationForLogType.APPROVE_DOCUMENT.getOperation(), document.getId(), e.getMessage());
+
+            transactionStatus.setRollbackOnly();
+            return new DocumentApprovalResult(document.getId(), ApprovalStatus.CONFLICT);
+
         } catch (Exception e) {
-            log.error("{}Failed to create registry entry for document with ID {}",
-                    OperationForLogType.APPROVE_DOCUMENT.getOperation(), document.getId());
+            log.error("{} Registry error for document ID: {}",
+                    OperationForLogType.APPROVE_DOCUMENT.getOperation(), document.getId(), e);
 
-            TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
-
+            transactionStatus.setRollbackOnly();
             return new DocumentApprovalResult(document.getId(), ApprovalStatus.REGISTRY_ERROR);
         }
-
 
         log.debug("{}Document with ID {} successfully approved (SUBMITTED -> APPROVED) and registry entry created",
                 OperationForLogType.APPROVE_DOCUMENT.getOperation(), document.getId());
         return new DocumentApprovalResult(document.getId(), ApprovalStatus.SUCCESS);
     }
-
 }

@@ -6,9 +6,11 @@ import com.ITQ.document_service.dto.request.BatchDocumentRequest;
 import com.ITQ.document_service.dto.request.BatchRequest;
 import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.request.DocumentSearchRequest;
 import com.ITQ.document_service.dto.request.HasId;
 import com.ITQ.document_service.dto.response.ApprovalResult;
 import com.ITQ.document_service.dto.response.DocumentApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentInfo;
 import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.response.DocumentResponse;
 import com.ITQ.document_service.dto.response.DocumentSubmissionResult;
@@ -18,18 +20,22 @@ import com.ITQ.document_service.enums.DocumentAction;
 import com.ITQ.document_service.enums.DocumentStatus;
 import com.ITQ.document_service.enums.OperationForLogType;
 import com.ITQ.document_service.exception.DocumentNotFoundException;
+import com.ITQ.document_service.exception.SearchDocumentClientException;
 import com.ITQ.document_service.mapper.DocumentMapper;
 import com.ITQ.document_service.repository.DocumentRepository;
+import com.ITQ.document_service.repository.specifications.DocumentSpecifications;
 import com.ITQ.document_service.service.DocumentService;
 import com.ITQ.document_service.service.internal.DocumentProcessor;
 import com.aventrix.jnanoid.jnanoid.NanoIdUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -44,6 +50,7 @@ public class DocumentServiceImpl implements DocumentService {
     private static final String DOC_STR = "DOC—";
     //approximate number of objects that leans to slow down the batch operation
     private static final int PARALLEL_THRESHOLD = 50;
+    private static final int AUTHOR_STR_SIZE = 255;
 
     private final DocumentRepository documentRepository;
     private final DocumentProcessor documentProcessor;
@@ -173,5 +180,38 @@ public class DocumentServiceImpl implements DocumentService {
                 logType.getOperation(), actionName.toLowerCase(), results.size());
 
         return results;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<DocumentInfo> searchDocuments(DocumentSearchRequest request, Pageable pageable) {
+        final DocumentStatus status = request.status();
+        final String author = request.author();
+        final OffsetDateTime dateFrom = request.dateFrom();
+        final OffsetDateTime dateTo = request.dateTo();
+
+        log.info("{}Searching documents with filters: status={}, author={}, dateFrom={}, dateTo={}",
+                OperationForLogType.SEARCH_DOCUMENTS.getOperation(),
+                status, author,
+                dateFrom, dateTo);
+
+        if (!request.isValidDateRange()) {
+            throw new SearchDocumentClientException("Wrong parameter value. Date from cannot be after date to");
+        }
+
+        if (StringUtils.isBlank(author) || author.length() > AUTHOR_STR_SIZE) {
+            throw new SearchDocumentClientException("Wrong parameter value. Author can't be empty " +
+                    "or include more than 255 signs");
+        }
+
+        Page<Document> documentPage = documentRepository.findAll(
+                DocumentSpecifications.search(status, author, dateFrom, dateTo),
+                pageable
+        );
+
+        log.debug("{}Found {} documents matching search criteria", OperationForLogType.SEARCH_DOCUMENTS.getOperation(),
+                documentPage.getTotalElements());
+
+        return documentPage.map(documentMapper::toDocumentInfo);
     }
 }

@@ -4,10 +4,13 @@ import com.ITQ.document_service.dto.request.BatchApprovalRequest;
 import com.ITQ.document_service.dto.request.BatchDocumentRequest;
 import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.request.DocumentSearchRequest;
 import com.ITQ.document_service.dto.response.ApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentInfo;
 import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.response.DocumentResponse;
 import com.ITQ.document_service.dto.response.SubmissionResult;
+import com.ITQ.document_service.enums.DocumentStatus;
 import com.ITQ.document_service.service.DocumentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -27,8 +30,11 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.OffsetDateTime;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -89,6 +95,35 @@ public class DocumentController {
             Pageable pageable
     ) {
         return documentService.findByIdIn(request, pageable);
+    }
+
+    //делаю на скорость, можно было бы и с POST + request body, пока так решил оставить
+    @Operation(summary = "Search documents",
+            description = "Searches documents with optional filters by status, author, and creation date range")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Documents found",
+                    content = @Content(schema = @Schema(implementation = Page.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid date range or if other validation errors appears")
+    })
+    @GetMapping
+    public Page<DocumentInfo> searchDocuments(
+            @Parameter(description = "Document status filter", example = "SUBMITTED")
+            @RequestParam(required = false) DocumentStatus status,
+
+            @Parameter(description = "Author filter (case-insensitive partial match)", example = "Бум бум")
+            @RequestParam(required = false) String author,
+
+            @Parameter(description = "Start date for creation date range (inclusive)", example = "2024-01-01T00:00:00Z")
+            @RequestParam(required = false) OffsetDateTime dateFrom,
+
+            @Parameter(description = "End date for creation date range (inclusive)", example = "2024-12-31T23:59:59Z")
+            @RequestParam(required = false) OffsetDateTime dateTo,
+
+            @ParameterObject
+            Pageable pageable
+    ) {
+        DocumentSearchRequest searchRequest = new DocumentSearchRequest(status, author, dateFrom, dateTo);
+        return documentService.searchDocuments(searchRequest, pageable);
     }
 
 
