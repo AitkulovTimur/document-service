@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
@@ -13,7 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface DocumentRepository extends JpaRepository<Document, Long> {
+public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSpecificationExecutor<Document> {
 
     @Override
     @NonNull
@@ -32,7 +33,7 @@ public interface DocumentRepository extends JpaRepository<Document, Long> {
     /**
      * Finds documents by their IDs with pagination and sorting.
      *
-     * @param ids list of document IDs
+     * @param ids      list of document IDs
      * @param pageable pagination and sorting parameters
      * @return page of documents with their history
      */

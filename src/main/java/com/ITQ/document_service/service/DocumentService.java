@@ -5,10 +5,13 @@ import com.ITQ.document_service.dto.request.BatchApprovalRequest;
 import com.ITQ.document_service.dto.request.BatchDocumentRequest;
 import com.ITQ.document_service.dto.request.BatchSubmissionRequest;
 import com.ITQ.document_service.dto.request.CreateDocumentRequest;
+import com.ITQ.document_service.dto.request.DocumentSearchRequest;
 import com.ITQ.document_service.dto.response.ApprovalResult;
+import com.ITQ.document_service.dto.response.DocumentInfo;
 import com.ITQ.document_service.dto.response.DocumentNoHistoryResponse;
 import com.ITQ.document_service.dto.response.DocumentResponse;
 import com.ITQ.document_service.dto.response.SubmissionResult;
+import com.ITQ.document_service.exception.SearchDocumentClientException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -88,4 +91,18 @@ public interface DocumentService {
      * @return a {@link ApprovalResult} containing results for each document
      */
     ApprovalResult approveDocuments(BatchApprovalRequest request);
+
+    /**
+     * Searches documents with optional filters and pagination.
+     *
+     * <p>This method performs a flexible search with multiple optional filters.
+     * All filters are optional and will be applied only when provided.
+     * The search is performed on creation date range.</p>
+     *
+     * @param request  the search request containing optional filters
+     * @param pageable pagination and sorting parameters
+     * @return a {@link Page} of DocumentInfo objects matching the criteria
+     * @throws SearchDocumentClientException if date range is invalid or if other valid errors appears
+     */
+    Page<DocumentInfo> searchDocuments(DocumentSearchRequest request, Pageable pageable);
 }

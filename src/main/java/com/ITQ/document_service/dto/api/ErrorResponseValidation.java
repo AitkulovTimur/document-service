@@ -17,6 +17,7 @@ public class ErrorResponseValidation extends ErrorResponse {
         this.errors = errors;
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record FieldError(String field, String rejectedValue, String error) {
     }
 }
