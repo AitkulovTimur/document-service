@@ -33,4 +33,4 @@ server:
 logging:
   level:
     liquibase: DEBUG
-    org.hibernate.orm.jdbc.bind: trace
+#    org.hibernate.orm.jdbc.bind: trace
