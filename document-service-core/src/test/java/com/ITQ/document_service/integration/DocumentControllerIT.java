@@ -78,7 +78,7 @@ class DocumentControllerIT extends BaseIntegrationTest {
     }
 
     @Test
-    void shouldFailValidationForEmptyFields() throws Exception {
+    void shouldFailValidationForEmptyFieldsInCreation() throws Exception {
 
         // given
         var request = new CreateDocumentRequest("", "");

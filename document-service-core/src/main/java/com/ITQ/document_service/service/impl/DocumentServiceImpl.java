@@ -27,9 +27,9 @@ import com.ITQ.document_service.repository.specifications.DocumentSpecifications
 import com.ITQ.document_service.service.DocumentService;
 import com.ITQ.document_service.service.internal.DocumentProcessor;
 import com.aventrix.jnanoid.jnanoid.NanoIdUtils;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -45,17 +45,29 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DocumentServiceImpl implements DocumentService {
     private static final String DOC_STR = "DOC—";
     //approximate number of objects that leans to slow down the batch operation
     private static final int PARALLEL_THRESHOLD = 50;
     private static final int AUTHOR_STR_SIZE = 255;
+    private static final int NANO_ID_STR_SIZE = 9;
 
     private final DocumentRepository documentRepository;
     private final DocumentProcessor documentProcessor;
     private final Executor documentExecutor;
     private final DocumentMapper documentMapper;
+
+    public DocumentServiceImpl(
+            DocumentRepository documentRepository,
+            DocumentProcessor documentProcessor,
+            @Qualifier("documentSubmitOrApproveExecutor") Executor documentExecutor,
+            DocumentMapper documentMapper
+    ) {
+        this.documentRepository = documentRepository;
+        this.documentProcessor = documentProcessor;
+        this.documentExecutor = documentExecutor;
+        this.documentMapper = documentMapper;
+    }
 
     @Override
     @Transactional
@@ -63,27 +75,23 @@ public class DocumentServiceImpl implements DocumentService {
         final String author = request.author();
         final String title = request.title();
 
-        log.info("{}Create document with author '{}' and title '{}'",
+        log.info("{}Creating document with author '{}' and title '{}'...",
                 OperationForLogType.CREATE_DOCUMENT.getOperation(),
                 author, title);
 
-        Document saved = new Document();
-        for (int i = 0; i < 1000; i++) {
-            String nanoId = NanoIdUtils.randomNanoId(NanoIdUtils.DEFAULT_NUMBER_GENERATOR,
-                    NanoIdUtils.DEFAULT_ALPHABET, 9);
+        String nanoId = NanoIdUtils.randomNanoId(NanoIdUtils.DEFAULT_NUMBER_GENERATOR,
+                NanoIdUtils.DEFAULT_ALPHABET, NANO_ID_STR_SIZE);
 
-            Document document = Document.builder()
-                    .author(author)
-                    .title(title)
-                    .status(DocumentStatus.DRAFT)
-                    .number(DOC_STR + nanoId)
-                    .build();
+        Document document = Document.builder()
+                .author(author)
+                .title(title)
+                .status(DocumentStatus.DRAFT)
+                .number(DOC_STR + nanoId)
+                .build();
 
-            saved = documentRepository.save(document);
-        }
+        Document saved = documentRepository.save(document);
 
-
-        log.info("{}Document with id '{}' and number '{}' has been created",
+        log.info("{}Document with id '{}' and number '{}' has been created!",
                 OperationForLogType.CREATE_DOCUMENT.getOperation(), saved.getId(), saved.getNumber());
         return documentMapper.toCreateResponse(saved);
     }
@@ -148,6 +156,7 @@ public class DocumentServiceImpl implements DocumentService {
             OperationForLogType logType,
             String actionName
     ) {
+        //if there will be any repeated ids.
         Map<Long, REQ> uniqueRequests = batchRequest.idsWithComments().stream()
                 .collect(Collectors.toMap(
                         HasId::id,
