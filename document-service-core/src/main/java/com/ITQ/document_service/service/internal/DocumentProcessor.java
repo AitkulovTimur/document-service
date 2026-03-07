@@ -82,6 +82,11 @@ public class DocumentProcessor {
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    private static void logHistoryForDocCreation(Document document, String actor) {
+        log.debug("{}History entity for document with ID {} will be created. Actor: {}",
+                OperationForLogType.SUBMIT_DOCUMENT.getOperation(), document.getId(), actor);
+    }
+
     /**
      * Processes a single document submission request.
      *
@@ -141,8 +146,7 @@ public class DocumentProcessor {
         }
         document.setStatus(DocumentStatus.SUBMITTED);
 
-        log.debug("{}History entity for document with ID {} will be created. Actor: {}",
-                OperationForLogType.SUBMIT_DOCUMENT.getOperation(), document.getId(), actor);
+        logHistoryForDocCreation(document, actor);
         DocumentHistory history = DocumentHistory.builder()
                 .document(document)
                 .actor(actor)
@@ -229,6 +233,7 @@ public class DocumentProcessor {
         try {
             document.setStatus(DocumentStatus.APPROVED);
 
+            logHistoryForDocCreation(document, approvedBy);
             DocumentHistory history = DocumentHistory.builder()
                     .document(document)
                     .actor(approvedBy)
