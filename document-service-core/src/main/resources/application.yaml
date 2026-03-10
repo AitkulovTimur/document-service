@@ -30,11 +30,16 @@ spring:
 server:
   port: ${PORT:8080}
 
-app:
+scheduled-settings:
   batch-size: 20
   worker-start-delay: 5000 #5 sec
   submit-worker-delay: 180000 #3 min
   approve-worker-delay: 20000 #3 min
+
+app-params:
+  parallel-threshold: 50
+  nano-id-size: 9
+  logger-period: 10
 
 logging:
   level:

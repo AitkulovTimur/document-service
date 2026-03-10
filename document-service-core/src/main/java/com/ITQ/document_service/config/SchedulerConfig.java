@@ -15,8 +15,8 @@ public class SchedulerConfig {
     @Bean
     public ThreadPoolTaskScheduler taskScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
-        //2 workers - 2 threads
-        scheduler.setPoolSize(2);
+        //2 workers + 2 spare threads for logging and other tasks
+        scheduler.setPoolSize(4);
         scheduler.setThreadNamePrefix("document-worker-");
         scheduler.setWaitForTasksToCompleteOnShutdown(true);
         scheduler.setAwaitTerminationSeconds(30);
@@ -25,7 +25,7 @@ public class SchedulerConfig {
     }
 
     @Bean
-    @ConfigurationProperties(prefix = "app")
+    @ConfigurationProperties(prefix = "scheduled-settings")
     public WorkerProperties workerProperties() {
         return new WorkerProperties();
     }
@@ -37,6 +37,5 @@ public class SchedulerConfig {
         private long workerStartDelay;
         private long submitWorkerDelay;
         private long approveWorkerDelay;
-
     }
 }

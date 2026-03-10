@@ -16,15 +16,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
 
 public class DocumentGeneratorApplication {
 
-    private static final Logger logger = LoggerFactory.getLogger(DocumentGeneratorApplication.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(DocumentGeneratorApplication.class);
     private static final String CONFIG_FILE_DEFAULT = "config.properties";
     private static final String DEFAULT_API_URL = "http://localhost:8080/api/documents";
     private static final int COEFFICIENT_IO_BOUND_TASKS = 4;
@@ -33,12 +37,21 @@ public class DocumentGeneratorApplication {
     private static final String SOCKET_TIMEOUT_SEC = "10";
     private static final String RESPONSE_TIMEOUT_SEC = "20";
     private static final String DEF_TERMINATION_TIMEOUT_MIN = "10";
+    private static final String DEFAULT_LOGGING_INITIAL_DELAY = "50";
+    private static final String DEFAULT_LOGGING_PERIOD = "4";
     private static final String DEFAULT_NUMBER_OF_DOCS = "10";
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+
+    private final LongAdder successCounter = new LongAdder();
+    private final LongAdder failedCounter = new LongAdder();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Properties properties = new Properties();
 
     private int totalDocs;
+    private Instant programStartedTime;
+
+
 
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -49,24 +62,27 @@ public class DocumentGeneratorApplication {
             DocumentGeneratorApplication app = new DocumentGeneratorApplication();
             app.run(null);
         } catch (Exception e) {
-            logger.error("Application failed", e);
+            LOGGER.error("Application failed", e);
             System.exit(1);
         }
     }
 
     //I had to add this strange param for proper unit testing
     public void run(CloseableHttpClient customHttpClientForTest) throws IOException {
+        programStartedTime = Instant.now();
         loadConfig();
 
         totalDocs = Integer.parseInt(properties.getProperty("document.count", DEFAULT_NUMBER_OF_DOCS));
         if (totalDocs < MINIMUM_THREADS) {
             throw new IllegalArgumentException("Document count must be greater than or equal to " + MINIMUM_THREADS);
         }
-        logger.info("Total documents to create: {}", totalDocs);
+        LOGGER.info("Total documents to create: {}", totalDocs);
 
         String apiUrl = properties.getProperty("api.url", DEFAULT_API_URL);
 
         int threadCount = adjustMultithreadingSettings(totalDocs);
+
+        createPeriodicLogger();
 
         try (CloseableHttpClient httpClient = customHttpClientForTest == null ?
                 createHttpClient(threadCount) :
@@ -74,7 +90,7 @@ public class DocumentGeneratorApplication {
 
             checkIfConnectionPossible(apiUrl, httpClient);
             if (totalDocs == MINIMUM_THREADS) {
-                logger.info("Application finished cleanly.");
+                generateFinishLog();
                 return;
             }
 
@@ -96,16 +112,59 @@ public class DocumentGeneratorApplication {
                 int timeOut = Integer.parseInt(properties.getProperty(
                         "multithreading.timeout", DEF_TERMINATION_TIMEOUT_MIN));
                 if (!executor.awaitTermination(timeOut, TimeUnit.MINUTES)) {
-                    logger.warn("Not all tasks finished, forcing shutdown...");
+                    LOGGER.warn("Not all tasks finished, forcing shutdown...");
                     executor.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 executor.shutdownNow();
                 Thread.currentThread().interrupt();
             }
-        }
+        } finally {
+            scheduler.shutdown();
+            try {
+                if (!scheduler.awaitTermination(1, TimeUnit.SECONDS)) {
+                    scheduler.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                scheduler.shutdownNow();
+            }
 
-        logger.info("Application finished cleanly.");
+            generateFinishLog();
+        }
+    }
+
+    private void createPeriodicLogger() {
+        final int initialDelay = Integer.parseInt(properties
+                .getProperty("logging.initialDelay", DEFAULT_LOGGING_INITIAL_DELAY));
+        final int period = Integer.parseInt(properties
+                .getProperty("logging.period", DEFAULT_LOGGING_PERIOD));
+
+        scheduler.scheduleAtFixedRate(this::logGenerationProgress, initialDelay, period, TimeUnit.MILLISECONDS);
+    }
+
+    private void logGenerationProgress() {
+        long processed = successCounter.sum() + failedCounter.sum();
+        double percent = (processed * 100.0) / totalDocs;
+        if (processed > 0) {
+            LOGGER.info("Generation progress: {}/{} ({}%), errors: {}",
+                    processed,
+                    totalDocs,
+                    String.format("%.1f", percent),
+                    failedCounter.sum());
+        }
+    }
+
+    private void generateFinishLog() {
+        Duration duration = Duration.between(programStartedTime, Instant.now());
+        double seconds = duration.toMillis() / 1000.0;
+
+        LOGGER.info("Generation completed. {}/{} docs has been generated. Errors: {}. Time spent: {} seconds",
+                successCounter.sum(),
+                totalDocs,
+                failedCounter.sum(),
+                String.format("%.3f", seconds)
+        );
+        LOGGER.info("Application finished cleanly.");
     }
 
     //try first call to clarify situation with the connection with the core service
@@ -117,7 +176,7 @@ public class DocumentGeneratorApplication {
             final String commonPart = "Connection refused";
 
             if (e.getMessage().contains(commonPart)) {
-                logger.error("{}. Please check if the core service is running", commonPart, e);
+                LOGGER.error("{}. Please check if the core service is running", commonPart, e);
                 System.exit(1);
             }
         }
@@ -141,7 +200,7 @@ public class DocumentGeneratorApplication {
         int maxThreadsAllowed = cores * COEFFICIENT_IO_BOUND_TASKS;
         int threadCount = Math.max(MINIMUM_THREADS, Math.min(totalDocuments, maxThreadsAllowed));
 
-        logger.info("Detected {} cores. Using {} thread(s) for {} documents", cores, threadCount, totalDocuments);
+        LOGGER.info("Detected {} cores. Using {} thread(s) for {} documents", cores, threadCount, totalDocuments);
 
         return threadCount;
     }
@@ -187,20 +246,22 @@ public class DocumentGeneratorApplication {
                 "author", "Document generator service"
         );
 
-        String jsonDocument = objectMapper.writeValueAsString(document);
+        String jsonDocument = OBJECT_MAPPER.writeValueAsString(document);
 
         HttpPost httpPost = new HttpPost(apiUrl);
         httpPost.setEntity(new StringEntity(jsonDocument, ContentType.APPLICATION_JSON));
 
-        logger.info("Sending request for document {}", documentNumber);
+        LOGGER.info("Sending request for document {}", documentNumber);
 
         httpClient.execute(httpPost, response -> {
             int statusCode = response.getCode();
             if (statusCode >= HttpStatus.SC_OK && statusCode < HttpStatus.SC_REDIRECTION) {
-                logger.info("Successfully generated document {}/{} (status: {})",
+                successCounter.increment();
+                LOGGER.debug("Successfully generated document {}/{} (status: {})",
                         documentNumber, totalDocs, statusCode);
             } else {
-                logger.error("Failed to generate document {} (status: {})",
+                failedCounter.increment();
+                LOGGER.error("Failed to generate document {} (status: {})",
                         documentNumber, statusCode);
             }
             return null;
