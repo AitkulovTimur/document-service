@@ -28,18 +28,24 @@ import com.ITQ.document_service.service.DocumentService;
 import com.ITQ.document_service.service.internal.DocumentProcessor;
 import com.aventrix.jnanoid.jnanoid.NanoIdUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -47,23 +53,28 @@ import java.util.stream.Collectors;
 @Service
 public class DocumentServiceImpl implements DocumentService {
     private static final String DOC_STR = "DOC—";
-    //approximate number of objects that leans to slow down the batch operation
-    private static final int PARALLEL_THRESHOLD = 50;
-    private static final int AUTHOR_STR_SIZE = 255;
-    private static final int NANO_ID_STR_SIZE = 9;
-
     private final DocumentRepository documentRepository;
+    private final ThreadPoolTaskScheduler taskScheduler;
     private final DocumentProcessor documentProcessor;
     private final Executor documentExecutor;
     private final DocumentMapper documentMapper;
 
+    @Value("${app-params.parallel-threshold:50}")
+    private int parallelThreshold;
+    @Value("${app-params.nano-id-size:9}")
+    private int nanoIdSize;
+    @Value("${app-params.logger-period:10}")
+    private int loggerPeriod;
+
     public DocumentServiceImpl(
             DocumentRepository documentRepository,
+            ThreadPoolTaskScheduler taskScheduler,
             DocumentProcessor documentProcessor,
             @Qualifier("documentSubmitOrApproveExecutor") Executor documentExecutor,
             DocumentMapper documentMapper
     ) {
         this.documentRepository = documentRepository;
+        this.taskScheduler = taskScheduler;
         this.documentProcessor = documentProcessor;
         this.documentExecutor = documentExecutor;
         this.documentMapper = documentMapper;
@@ -80,7 +91,7 @@ public class DocumentServiceImpl implements DocumentService {
                 author, title);
 
         String nanoId = NanoIdUtils.randomNanoId(NanoIdUtils.DEFAULT_NUMBER_GENERATOR,
-                NanoIdUtils.DEFAULT_ALPHABET, NANO_ID_STR_SIZE);
+                NanoIdUtils.DEFAULT_ALPHABET, nanoIdSize);
 
         Document document = Document.builder()
                 .author(author)
@@ -121,7 +132,8 @@ public class DocumentServiceImpl implements DocumentService {
     @Override
     @Transactional(readOnly = true)
     public Page<DocumentResponse> findByIdIn(BatchDocumentRequest request, Pageable pageable) {
-        log.info("{}Retrieving documents by IDs with pagination and sorting", OperationForLogType.GET_DOCUMENT);
+        log.info("{}Retrieving documents by IDs with pagination and sorting",
+                OperationForLogType.GET_DOCUMENT.getOperation());
 
         Page<Document> documentPage = documentRepository.findByIdIn(request.ids(), pageable);
 
@@ -133,7 +145,7 @@ public class DocumentServiceImpl implements DocumentService {
         List<DocumentSubmissionResult> results = executeBatch(
                 documentProcessor::submitSingleDocument,
                 request,
-                OperationForLogType.SUBMIT_DOCUMENT,
+                OperationForLogType.SUBMIT_DOCUMENT.getOperation(),
                 DocumentAction.SUBMIT.name().toLowerCase()
         );
         return new SubmissionResult(results);
@@ -144,7 +156,7 @@ public class DocumentServiceImpl implements DocumentService {
         List<DocumentApprovalResult> results = executeBatch(
                 documentProcessor::approveSingleDocument,
                 request,
-                OperationForLogType.APPROVE_DOCUMENT,
+                OperationForLogType.APPROVE_DOCUMENT.getOperation(),
                 DocumentAction.APPROVE.name().toLowerCase()
         );
         return new ApprovalResult(results);
@@ -153,7 +165,7 @@ public class DocumentServiceImpl implements DocumentService {
     private <REQ extends HasId, RES> List<RES> executeBatch(
             BiFunction<REQ, String, RES> processor,
             BatchRequest<REQ> batchRequest,
-            OperationForLogType logType,
+            String logType,
             String actionName
     ) {
         //if there will be any repeated ids.
@@ -164,31 +176,105 @@ public class DocumentServiceImpl implements DocumentService {
                         (existing, duplicate) -> existing
                 ));
 
-        int size = uniqueRequests.size();
+        int totalDocsToProcess = uniqueRequests.size();
         log.info("{}{} {} documents with ids: {}",
-                logType.getOperation(), actionName, size, uniqueRequests.keySet());
+                logType, actionName, totalDocsToProcess, uniqueRequests.keySet());
 
-        List<RES> results;
+        LongAdder processedCount = new LongAdder();
+        //parallel processing
+        LongAdder failedCountParallel = new LongAdder();
+        //single thread processing
+        int failedCounterSingle = 0;
 
-        if (size > PARALLEL_THRESHOLD) {
-            List<CompletableFuture<RES>> futures = uniqueRequests.values().stream()
-                    .map(req -> CompletableFuture.supplyAsync(
-                            () -> processor.apply(req, batchRequest.actor()),
-                            documentExecutor
-                    ))
-                    .toList();
+        ScheduledFuture<?> progressLogger = null;
 
-            results = futures.stream().map(CompletableFuture::join).toList();
-        } else {
-            results = uniqueRequests.values().stream()
-                    .map(req -> processor.apply(req, batchRequest.actor()))
-                    .toList();
+        boolean isParallelProcessing = totalDocsToProcess > parallelThreshold;
+        if (isParallelProcessing) {
+            progressLogger = taskScheduler.scheduleAtFixedRate(() -> {
+                long currentProcessed = processedCount.sum();
+                if (currentProcessed > 0) {
+                    logProgress(logType, actionName, totalDocsToProcess, currentProcessed, failedCountParallel.sum());
+                }
+            }, Duration.ofMillis(loggerPeriod));
         }
 
-        log.info("{}Batch {} completed. Processed {} documents",
-                logType.getOperation(), actionName.toLowerCase(), results.size());
+        try {
+            if (isParallelProcessing) {
+                List<CompletableFuture<RES>> futures = uniqueRequests.values()
+                        .stream()
+                        .map(req ->
+                                CompletableFuture
+                                        .supplyAsync(
+                                                () -> processor.apply(req, batchRequest.actor()),
+                                                documentExecutor
+                                        )
+                                        .handle((result, ex) -> {
+                                            if (ex == null) {
+                                                processedCount.increment();
+                                                return result;
+                                            } else {
+                                                failedCountParallel.increment();
+                                                processedCount.increment();
+                                                logUnexpectedException(logType, req.id(), ex);
+                                                return null;
+                                            }
 
-        return results;
+                                        })
+                        )
+                        .toList();
+
+                return futures.stream()
+                        .map(CompletableFuture::join)
+                        .filter(Objects::nonNull)
+                        .toList();
+            } else {
+                int progressCounter = 0;
+                List<RES> resultList = new ArrayList<>();
+                for (REQ req : uniqueRequests.values()) {
+                    try {
+                        RES operationResult = processor.apply(req, batchRequest.actor());
+                        progressCounter++;
+                        resultList.add(operationResult);
+                    } catch (Exception e) {
+                        logUnexpectedException(logType, req.id(), e);
+                        failedCounterSingle++;
+                    }
+
+                    logProgress(logType, actionName, totalDocsToProcess, progressCounter, failedCounterSingle);
+                }
+                return resultList;
+            }
+        } finally {
+            if (progressLogger != null) {
+                progressLogger.cancel(false);
+            }
+            log.info("{}Batch {} completed. Processed {} documents, failed {}",
+                    logType, actionName, totalDocsToProcess, isParallelProcessing ?
+                            failedCountParallel.sum() :
+                            failedCounterSingle
+            );
+        }
+    }
+
+    private void logProgress(String logType, String actionName, int total, long processed, long failed) {
+        double progressPercent = (total > 0) ? (processed * 100.0 / total) : 0;
+
+        log.info("{}Progress [{}]: {}/{} ({}%) | Failed: {}",
+                logType,
+                actionName.toUpperCase(),
+                processed,
+                total,
+                String.format("%.1f", progressPercent),
+                failed);
+    }
+
+    private void logUnexpectedException(String logType, Long requestId, Throwable exception) {
+        log.error(
+                "{}Error processing document ID {}: {}",
+                logType,
+                requestId,
+                exception.getMessage()
+        );
     }
 
     @Override
@@ -206,11 +292,6 @@ public class DocumentServiceImpl implements DocumentService {
 
         if (!request.isValidDateRange()) {
             throw new SearchDocumentClientException("Wrong parameter value. Date from cannot be after date to");
-        }
-
-        if (StringUtils.isBlank(author) || author.length() > AUTHOR_STR_SIZE) {
-            throw new SearchDocumentClientException("Wrong parameter value. Author can't be empty " +
-                    "or include more than 255 signs");
         }
 
         Page<Document> documentPage = documentRepository.findAll(

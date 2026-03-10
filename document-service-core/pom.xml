@@ -102,6 +102,7 @@
                             <artifactId>mapstruct-processor</artifactId>
                         </path>
                     </annotationProcessorPaths>
+                    <parameters>true</parameters>
                 </configuration>
             </plugin>
             <plugin>

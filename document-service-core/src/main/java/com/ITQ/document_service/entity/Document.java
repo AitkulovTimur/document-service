@@ -10,7 +10,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
@@ -68,9 +67,4 @@ public class Document {
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
     private List<DocumentHistory> history;
-
-    @OneToOne(mappedBy = "document", cascade = CascadeType.ALL, orphanRemoval = true)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    private ApprovalRegistry approvalRegistry;
 }

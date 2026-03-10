@@ -65,8 +65,13 @@ public class DocumentController {
     })
     @GetMapping("/{id}")
     public DocumentResponse findById(
-            @Parameter(description = "Unique identifier of the document", example = "1")
-            @PathVariable Long id
+            @Parameter(
+                    name = "id",
+                    description = "Unique identifier of the document",
+                    example = "1",
+                    required = true
+            )
+            @PathVariable(name = "id") Long id
     ) {
         return documentService.findById(id);
     }
@@ -80,8 +85,13 @@ public class DocumentController {
     })
     @GetMapping("/by-number/{number}")
     public DocumentResponse findByNumber(
-            @Parameter(description = "Business number of the document", example = "DOC-2024-001")
-            @PathVariable String number
+            @Parameter(
+                    name = "number",
+                    description = "Business number of the document",
+                    example = "DOC-2024-001",
+                    required = true
+            )
+            @PathVariable(name = "number") String number
     ) {
         return documentService.findByNumber(number);
     }
@@ -108,16 +118,16 @@ public class DocumentController {
     @GetMapping
     public Page<DocumentInfo> searchDocuments(
             @Parameter(description = "Document status filter", example = "SUBMITTED")
-            @RequestParam(required = false) DocumentStatus status,
+            @RequestParam(required = false, name = "status") DocumentStatus status,
 
             @Parameter(description = "Author filter (case-insensitive partial match)", example = "Бум бум")
-            @RequestParam(required = false) String author,
+            @RequestParam(required = false, name = "author") String author,
 
             @Parameter(description = "Start date for creation date range (inclusive)", example = "2024-01-01T00:00:00Z")
-            @RequestParam(required = false) OffsetDateTime dateFrom,
+            @RequestParam(required = false, name = "dateFrom") OffsetDateTime dateFrom,
 
             @Parameter(description = "End date for creation date range (inclusive)", example = "2024-12-31T23:59:59Z")
-            @RequestParam(required = false) OffsetDateTime dateTo,
+            @RequestParam(required = false, name = "dateTo") OffsetDateTime dateTo,
 
             @ParameterObject
             Pageable pageable

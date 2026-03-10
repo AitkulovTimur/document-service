@@ -46,8 +46,8 @@ public interface DocumentRepository extends JpaRepository<Document, Long>, JpaSp
     /**
      * Finds document IDs by status with a limit for batch processing.
      *
-     * @param status the document status
-     * @param pageable  pageable param for limit
+     * @param status   the document status
+     * @param pageable pageable param for limit
      * @return list of document IDs with the given status
      */
     @Query("SELECT d.id FROM Document d WHERE d.status = :status ORDER BY d.id")
